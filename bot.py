@@ -7,6 +7,7 @@ import socket
 import sys
 import hashlib
 import secrets
+import shutil
 import time
 from datetime import datetime, timedelta
 from flask import Flask, send_from_directory, request, jsonify, session, redirect, url_for, make_response
@@ -29,6 +30,9 @@ ADMIN_PASSWORD = "Ziad555"
 
 # ============== Helper Functions ==============
 
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
 def init_users_db():
     if not os.path.exists(USERS_FILE):
         with open(USERS_FILE, "w", encoding="utf-8") as f:
@@ -49,9 +53,6 @@ def init_tokens_db():
     if not os.path.exists(REMEMBER_TOKENS_FILE):
         with open(REMEMBER_TOKENS_FILE, "w", encoding="utf-8") as f:
             json.dump({}, f)
-
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
 
 def create_remember_token(username):
     """إنشاء رمز تذكر جديد للمستخدم"""
@@ -231,7 +232,7 @@ def get_ip():
         ip = s.getsockname()[0]
         s.close()
         return ip
-    except: 
+    except Exception: 
         return '127.0.0.1'
 
 def load_servers_list():
@@ -245,7 +246,7 @@ def load_servers_list():
     try:
         entries = [d for d in os.listdir(user_servers_dir) 
                   if os.path.isdir(os.path.join(user_servers_dir, d))]
-    except: 
+    except Exception: 
         entries = []
     
     servers = []
@@ -258,7 +259,7 @@ def load_servers_list():
                 meta = json.load(f)
                 display_name = meta.get("display_name", folder)
                 startup_file = meta.get("startup_file", "")
-        except: 
+        except Exception: 
             pass
         servers.append({
             "id": i, 
@@ -323,7 +324,7 @@ def api_register():
     if 'username' not in session or not is_admin(session['username']):
         return jsonify({"success": False, "message": "غير مصرح"}), 403
     
-    data = request.get_json()
+    data = request.get_json() or {}
     username = data.get("username", "").strip()
     password = data.get("password", "").strip()
     
@@ -335,7 +336,7 @@ def api_register():
 
 @app.route("/api/login", methods=["POST"])
 def api_login():
-    data = request.get_json()
+    data = request.get_json() or {}
     username = data.get("username", "").strip()
     password = data.get("password", "").strip()
     remember_me = data.get("remember_me", False)
@@ -416,7 +417,7 @@ def user_settings():
             "is_admin": user_data.get("is_admin", False)
         })
     
-    data = request.get_json()
+    data = request.get_json() or {}
     theme = data.get("theme", "blue")
     
     with open(USERS_FILE, "r", encoding="utf-8") as f:
@@ -450,6 +451,9 @@ def add_server():
     folder = sanitize_folder_name(name)
     
     user_servers_dir = ensure_user_servers_dir()
+    if not user_servers_dir:
+        return jsonify({"success": False, "message": "غير مصرح"}), 401
+        
     target = os.path.join(user_servers_dir, folder)
     
     if os.path.exists(target): 
@@ -477,10 +481,13 @@ def get_stats(folder):
                 running = True
                 cpu = f"{p.cpu_percent(interval=None)}%"
                 mem = f"{p.memory_info().rss / 1024 / 1024:.1f} MB"
-        except: 
+        except Exception: 
             pass
     
     user_servers_dir = ensure_user_servers_dir()
+    if not user_servers_dir:
+        return jsonify({"success": False, "message": "غير مصرح"}), 401
+        
     log_path = os.path.join(user_servers_dir, folder, "server.log")
     logs = open(log_path, "r", encoding="utf-8").read() if os.path.exists(log_path) else ""
     
@@ -505,7 +512,7 @@ def server_action(folder, act):
             for child in p.children(recursive=True): 
                 child.kill()
             p.kill()
-        except: 
+        except Exception: 
             pass
         if act == "stop": 
             del running_procs[proc_key]
@@ -514,6 +521,9 @@ def server_action(folder, act):
         return jsonify({"success": True})
 
     user_servers_dir = ensure_user_servers_dir()
+    if not user_servers_dir:
+        return jsonify({"success": False, "message": "غير مصرح"}), 401
+        
     log_path = os.path.join(user_servers_dir, folder, "server.log")
     open(log_path, "w").close()
     
@@ -521,7 +531,7 @@ def server_action(folder, act):
     if not meta_path:
         return jsonify({"success": False, "message": "مجلد غير موجود"})
     
-    with open(meta_path, "r") as f:
+    with open(meta_path, "r", encoding="utf-8") as f:
         startup = json.load(f).get("startup_file")
     
     if not startup: 
@@ -530,7 +540,7 @@ def server_action(folder, act):
     if not os.path.exists(os.path.join(user_servers_dir, folder, startup)):
         return jsonify({"success": False, "message": "الملف غير موجود"})
     
-    log_file = open(log_path, "a")
+    log_file = open(log_path, "a", encoding="utf-8")
     proc = subprocess.Popen(
         [sys.executable, "-u", startup], 
         cwd=os.path.join(user_servers_dir, folder), 
@@ -546,6 +556,9 @@ def list_files(folder):
         return jsonify([]), 401
     
     user_servers_dir = ensure_user_servers_dir()
+    if not user_servers_dir:
+        return jsonify([]), 401
+        
     p = os.path.join(user_servers_dir, folder)
     files = []
     if os.path.exists(p):
@@ -563,15 +576,19 @@ def get_file_content(folder, filename):
         return jsonify({"content": ""}), 401
     
     user_servers_dir = ensure_user_servers_dir()
-    file_path = os.path.join(user_servers_dir, folder, filename)
+    if not user_servers_dir:
+        return jsonify({"content": ""}), 401
+        
+    safe_base = os.path.realpath(user_servers_dir)
+    file_path = os.path.realpath(os.path.join(safe_base, folder, filename))
     
-    if not file_path.startswith(user_servers_dir):
+    if not file_path.startswith(safe_base):
         return jsonify({"content": ""}), 403
     
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             return jsonify({"content": f.read()})
-    except: 
+    except Exception: 
         return jsonify({"content": ""})
 
 @app.route("/files/save/<folder>/<filename>", methods=["POST"])
@@ -580,15 +597,22 @@ def save_file_content(folder, filename):
         return jsonify({"success": False}), 401
     
     user_servers_dir = ensure_user_servers_dir()
-    file_path = os.path.join(user_servers_dir, folder, filename)
+    if not user_servers_dir:
+        return jsonify({"success": False}), 401
+        
+    safe_base = os.path.realpath(user_servers_dir)
+    file_path = os.path.realpath(os.path.join(safe_base, folder, filename))
     
-    if not file_path.startswith(user_servers_dir):
+    if not file_path.startswith(safe_base):
         return jsonify({"success": False}), 403
     
-    data = request.json
-    with open(file_path, 'w', encoding='utf-8') as f:
-        f.write(data.get('content', ''))
-    return jsonify({"success": True})
+    data = request.get_json() or {}
+    try:
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(data.get('content', ''))
+        return jsonify({"success": True})
+    except Exception:
+        return jsonify({"success": False}), 500
 
 @app.route("/files/upload/<folder>", methods=["POST"])
 def upload_file(folder):
@@ -596,8 +620,9 @@ def upload_file(folder):
         return jsonify({"success": False}), 401
     
     user_servers_dir = ensure_user_servers_dir()
-    
-    # رفع ملفات متعددة تلقائياً
+    if not user_servers_dir:
+        return jsonify({"success": False}), 401
+        
     uploaded_files = request.files.getlist('files[]')
     results = []
     
@@ -624,7 +649,9 @@ def upload_single_file(folder):
         return jsonify({"success": False}), 401
     
     user_servers_dir = ensure_user_servers_dir()
-    
+    if not user_servers_dir:
+        return jsonify({"success": False}), 401
+        
     if 'file' not in request.files:
         return jsonify({"success": False, "message": "لم يتم اختيار ملف"})
     
@@ -652,16 +679,25 @@ def rename_file(folder):
         return jsonify({"success": False}), 401
     
     user_servers_dir = ensure_user_servers_dir()
-    data = request.get_json()
+    if not user_servers_dir:
+        return jsonify({"success": False}), 401
+        
+    data = request.get_json() or {}
+    old_name = data.get('old', '')
+    new_name = data.get('new', '')
     
-    old_path = os.path.join(user_servers_dir, folder, data['old'])
-    new_path = os.path.join(user_servers_dir, folder, data['new'])
+    safe_base = os.path.realpath(user_servers_dir)
+    old_path = os.path.realpath(os.path.join(safe_base, folder, old_name))
+    new_path = os.path.realpath(os.path.join(safe_base, folder, new_name))
     
-    if not old_path.startswith(user_servers_dir) or not new_path.startswith(user_servers_dir):
+    if not old_path.startswith(safe_base) or not new_path.startswith(safe_base):
         return jsonify({"success": False}), 403
     
-    os.rename(old_path, new_path)
-    return jsonify({"success": True})
+    try:
+        os.rename(old_path, new_path)
+        return jsonify({"success": True})
+    except Exception:
+        return jsonify({"success": False}), 500
 
 @app.route("/files/delete/<folder>", methods=["POST"])
 def delete_file(folder):
@@ -669,14 +705,24 @@ def delete_file(folder):
         return jsonify({"success": False}), 401
     
     user_servers_dir = ensure_user_servers_dir()
-    data = request.get_json()
-    file_path = os.path.join(user_servers_dir, folder, data['name'])
+    if not user_servers_dir:
+        return jsonify({"success": False}), 401
+        
+    data = request.get_json() or {}
+    filename = data.get('name', '')
     
-    if not file_path.startswith(user_servers_dir):
+    safe_base = os.path.realpath(user_servers_dir)
+    file_path = os.path.realpath(os.path.join(safe_base, folder, filename))
+    
+    if not file_path.startswith(safe_base):
         return jsonify({"success": False}), 403
     
-    os.remove(file_path)
-    return jsonify({"success": True})
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        return jsonify({"success": True})
+    except Exception:
+        return jsonify({"success": False}), 500
 
 @app.route("/files/install/<folder>", methods=["POST"])
 def install_req(folder):
@@ -685,15 +731,15 @@ def install_req(folder):
         return jsonify({"success": False}), 401
     
     user_servers_dir = ensure_user_servers_dir()
-    
-    # التحقق من وجود ملف requirements.txt
+    if not user_servers_dir:
+        return jsonify({"success": False}), 401
+        
     req_path = os.path.join(user_servers_dir, folder, "requirements.txt")
     if not os.path.exists(req_path):
         return jsonify({"success": False, "message": "ملف requirements.txt غير موجود"})
     
     log_path = os.path.join(user_servers_dir, folder, "server.log")
     
-    # كتابة رسالة البدء في السجل
     with open(log_path, "w", encoding="utf-8") as log_file:
         log_file.write("[SYSTEM] Starting Installation...\n")
         log_file.write(f"[SYSTEM] Installing packages from: {req_path}\n")
@@ -701,7 +747,6 @@ def install_req(folder):
         log_file.write(f"[SYSTEM] Working directory: {os.path.join(user_servers_dir, folder)}\n")
         log_file.write("="*50 + "\n")
     
-    # تشغيل عملية التثبيت
     try:
         proc = subprocess.Popen(
             [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], 
@@ -711,7 +756,6 @@ def install_req(folder):
             universal_newlines=True
         )
         
-        # قراءة المخرجات وإضافتها للسجل
         with open(log_path, "a", encoding="utf-8") as log_file:
             for line in proc.stdout:
                 log_file.write(line)
@@ -719,7 +763,6 @@ def install_req(folder):
         
         proc.wait()
         
-        # كتابة نتيجة التثبيت
         with open(log_path, "a", encoding="utf-8") as log_file:
             if proc.returncode == 0:
                 log_file.write("\n" + "="*50 + "\n")
@@ -747,7 +790,10 @@ def set_startup(folder):
     
     with open(meta_path, "r", encoding="utf-8") as f:
         m = json.load(f)
-    m["startup_file"] = request.get_json().get('file', '')
+    
+    data = request.get_json() or {}
+    m["startup_file"] = data.get('file', '')
+    
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(m, f)
     return jsonify({"success": True})
@@ -764,7 +810,7 @@ def get_all_users():
     
     user_list = []
     for username, data in users.items():
-        if username != ADMIN_USERNAME:  # عدم عرض المسؤول نفسه
+        if username != ADMIN_USERNAME:  
             user_list.append({
                 "username": username,
                 "created_at": data.get("created_at"),
@@ -780,7 +826,7 @@ def delete_user():
     if 'username' not in session or not is_admin(session['username']):
         return jsonify({"success": False, "message": "غير مصرح"}), 403
     
-    data = request.get_json()
+    data = request.get_json() or {}
     username_to_delete = data.get("username", "").strip()
     
     if not username_to_delete or username_to_delete == ADMIN_USERNAME:
@@ -793,20 +839,17 @@ def delete_user():
     if username_to_delete not in users:
         return jsonify({"success": False, "message": "المستخدم غير موجود"})
     
-    # حذف المستخدم
     del users[username_to_delete]
     
     with open(USERS_FILE, "w", encoding="utf-8") as f:
         json.dump(users, f, indent=2)
     
-    # حذف مجلد المستخدم إذا كان موجوداً
     user_dir = os.path.join(USERS_DIR, username_to_delete)
     if os.path.exists(user_dir):
-        import shutil
         shutil.rmtree(user_dir)
     
     return jsonify({"success": True, "message": "تم حذف المستخدم بنجاح"})
 
-iif __name__ == "__main__":
+if __name__ == "__main__":
     port = int(os.environ.get("SERVER_PORT", 21910))
     app.run(host="0.0.0.0", port=port, debug=True)
