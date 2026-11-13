@@ -173,7 +173,7 @@
     }
     
     .card::before {
-      content: '';
+      content: "";
       position: absolute;
       top: 0;
       left: 0;
@@ -248,7 +248,7 @@
     }
     
     .btn::before {
-      content: '';
+      content: "";
       position: absolute;
       top: 0;
       left: -100%;
@@ -555,7 +555,7 @@
     // إنشاء الخلفية المتحركة الذهبية
     function createGoldBackground() {
       const container = document.getElementById('backgroundAnimation');
-      container.innerHTML = '';
+      container.innerHTML = "";
       
       for (let i = 0; i < 12; i++) {
         const line = document.createElement('div');
@@ -582,7 +582,6 @@
         }
         
         if (!data.is_admin) {
-          // إذا لم يكن مسؤولاً، توجيهه للوحة التحكم العادية
           window.location.href = '/index.html';
           return;
         }
@@ -606,7 +605,7 @@
     
     // تسجيل الخروج
     async function logout() {
-      if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
+      if (confirm("هل أنت متأكد من تسجيل الخروج؟")) {
         await fetch('/api/logout', { method: 'POST' });
         window.location.href = '/login';
       }
@@ -619,22 +618,22 @@
       const confirmPassword = document.getElementById('confirmPassword').value.trim();
       
       if (!username || !password || !confirmPassword) {
-        showMessage('يرجى ملء جميع الحقول', 'error', 'createMessage');
+        showMessage("يرجى ملء جميع الحقول", "error", "createMessage");
         return;
       }
       
       if (password.length < 6) {
-        showMessage('كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'error', 'createMessage');
+        showMessage("كلمة المرور يجب أن تكون 6 أحرف على الأقل", "error", "createMessage");
         return;
       }
       
       if (password !== confirmPassword) {
-        showMessage('كلمة المرور غير متطابقة', 'error', 'createMessage');
+        showMessage("كلمة المرور غير متطابقة", "error", "createMessage");
         return;
       }
       
       if (username.toLowerCase() === 'hama121') {
-        showMessage('لا يمكن استخدام هذا الاسم', 'error', 'createMessage');
+        showMessage("لا يمكن استخدام هذا الاسم", "error", "createMessage");
         return;
       }
       
@@ -656,23 +655,21 @@
         const data = await response.json();
         
         if (data.success) {
-          showMessage('✅ ' + data.message, 'success', 'createMessage');
+          showMessage("✅ " + data.message, "success", "createMessage");
           
-          // تنظيف الحقول
-          document.getElementById('newUsername').value = '';
-          document.getElementById('newPassword').value = '';
-          document.getElementById('confirmPassword').value = '';
+          document.getElementById('newUsername').value = "";
+          document.getElementById('newPassword').value = "";
+          document.getElementById('confirmPassword').value = "";
           
-          // تحديث القائمة
           setTimeout(() => {
             loadUsers();
             loadStats();
           }, 1000);
         } else {
-          showMessage('❌ ' + data.message, 'error', 'createMessage');
+          showMessage("❌ " + data.message, "error", "createMessage");
         }
       } catch (error) {
-        showMessage('⚠️ خطأ في الاتصال بالخادم', 'error', 'createMessage');
+        showMessage("⚠️ خطأ في الاتصال بالخادم", "error", "createMessage");
       } finally {
         text.style.display = 'inline';
         loading.style.display = 'none';
@@ -720,7 +717,7 @@
           }
         }
       } catch (error) {
-        console.error('Error loading users:', error);
+        console.error("Error loading users:", error);
       }
     }
     
@@ -734,7 +731,6 @@
           const totalUsers = usersData.users.length;
           const today = new Date().toLocaleDateString('ar-SA');
           
-          // حساب المستخدمين النشطين (الذين سجلوا دخولاً في آخر 30 يوم)
           const activeUsers = usersData.users.filter(user => {
             if (!user.last_login) return false;
             const lastLogin = new Date(user.last_login);
@@ -743,7 +739,6 @@
             return lastLogin > thirtyDaysAgo;
           }).length;
           
-          // حساب المستخدمين المنشئين اليوم
           const todayUsers = usersData.users.filter(user => {
             const createdDate = new Date(user.created_at).toLocaleDateString('ar-SA');
             return createdDate === today;
@@ -754,7 +749,7 @@
           document.getElementById('todayUsers').textContent = todayUsers;
         }
       } catch (error) {
-        console.error('Error loading stats:', error);
+        console.error("Error loading stats:", error);
       }
     }
     
@@ -774,24 +769,24 @@
         const data = await response.json();
         
         if (data.success) {
-          showMessage(`✅ تم حذف المستخدم "${username}" بنجاح`, 'success', 'createMessage');
+          showMessage(`✅ تم حذف المستخدم "${username}" بنجاح`, "success", "createMessage");
           setTimeout(() => {
             loadUsers();
             loadStats();
           }, 1000);
         } else {
-          showMessage('❌ ' + data.message, 'error', 'createMessage');
+          showMessage("❌ " + data.message, "error", "createMessage");
         }
       } catch (error) {
-        showMessage('⚠️ خطأ في حذف المستخدم', 'error', 'createMessage');
+        showMessage("⚠️ خطأ في حذف المستخدم", "error", "createMessage");
       }
     }
     
     // تصدير البيانات
     function exportUsers() {
-      showMessage('⏳ جاري تصدير البيانات...', 'warning', 'createMessage');
+      showMessage("⏳ جاري تصدير البيانات...", "warning", "createMessage");
       setTimeout(() => {
-        showMessage('✅ تم تصدير البيانات بنجاح', 'success', 'createMessage');
+        showMessage("✅ تم تصدير البيانات بنجاح", "success", "createMessage");
       }, 1500);
     }
     
@@ -807,10 +802,13 @@
       }, 5000);
     }
     
-    // دعم زر Enter في حقول إنشاء الحساب
+    // دعم زر Enter داخل حقول النموذج فقط
     document.addEventListener('keypress', function(e) {
       if (e.key === 'Enter') {
-        createNewUser();
+        const activeElement = document.activeElement;
+        if (activeElement && activeElement.tagName === 'INPUT') {
+          createNewUser();
+        }
       }
     });
     
@@ -818,7 +816,6 @@
     document.addEventListener('DOMContentLoaded', function() {
       checkAdminAuth();
       
-      // تحديث الخلفية كل 30 ثانية
       setInterval(() => {
         createGoldBackground();
       }, 30000);
