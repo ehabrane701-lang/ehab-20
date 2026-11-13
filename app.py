@@ -7,7 +7,7 @@ import socket
 import sys
 import hashlib
 import secrets
-import time
+import shutil
 from datetime import datetime, timedelta
 from flask import Flask, send_from_directory, request, jsonify, session, redirect, url_for, make_response
 
@@ -29,13 +29,19 @@ ADMIN_PASSWORD = "Ziad555"
 
 # ============== Helper Functions ==============
 
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
+
 def safe_load_json(path, default_val):
-    """دالة آمنة لقراءة ملفات JSON لمنع انهيار التطبيق عند تلف البيانات"""
+    """دالة آمنة لقراءة ملفات JSON لمنع انهيار التطبيق عند تلف البيانات أو فراغ الملف"""
     if not os.path.exists(path):
         return default_val
     try:
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            content = f.read().strip()
+            if not content:
+                return default_val
+            return json.loads(content)
     except (json.JSONDecodeError, Exception):
         return default_val
 
@@ -58,9 +64,6 @@ def init_tokens_db():
     if not os.path.exists(REMEMBER_TOKENS_FILE):
         with open(REMEMBER_TOKENS_FILE, "w", encoding="utf-8") as f:
             json.dump({}, f)
-
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
 
 def create_remember_token(username):
     """إنشاء رمز تذكر جديد للمستخدم"""
@@ -91,14 +94,14 @@ def validate_remember_token(token):
     token_data = tokens[token]
     try:
         expires_at = datetime.fromisoformat(token_data["expires_at"])
-    except Exception:
-        del tokens[token]
+    except (ValueError, KeyError, TypeError):
+        tokens.pop(token, None)
         with open(REMEMBER_TOKENS_FILE, "w", encoding="utf-8") as f:
             json.dump(tokens, f, indent=2)
         return None
     
     if datetime.now() > expires_at:
-        del tokens[token]
+        tokens.pop(token, None)
         with open(REMEMBER_TOKENS_FILE, "w", encoding="utf-8") as f:
             json.dump(tokens, f, indent=2)
         return None
@@ -109,13 +112,13 @@ def validate_remember_token(token):
     with open(REMEMBER_TOKENS_FILE, "w", encoding="utf-8") as f:
         json.dump(tokens, f, indent=2)
     
-    return token_data["username"]
+    return token_data.get("username")
 
 def delete_remember_token(token):
     """حذف رمز التذكر"""
     tokens = safe_load_json(REMEMBER_TOKENS_FILE, {})
     if token in tokens:
-        del tokens[token]
+        tokens.pop(token, None)
         with open(REMEMBER_TOKENS_FILE, "w", encoding="utf-8") as f:
             json.dump(tokens, f, indent=2)
 
@@ -126,7 +129,7 @@ def delete_all_user_tokens(username):
     
     if tokens_to_delete:
         for token in tokens_to_delete:
-            del tokens[token]
+            tokens.pop(token, None)
         with open(REMEMBER_TOKENS_FILE, "w", encoding="utf-8") as f:
             json.dump(tokens, f, indent=2)
 
@@ -214,7 +217,7 @@ def ensure_meta(folder):
     meta_path = os.path.join(folder_path, "meta.json")
     if not os.path.exists(meta_path):
         with open(meta_path, "w", encoding="utf-8") as f:
-            json.dump({"display_name": folder, "startup_file": ""}, f)
+            json.dump({"display_name": folder, "startup_file": ""}, f, indent=2)
     return meta_path
 
 def get_ip():
@@ -353,7 +356,7 @@ def api_login():
                 token,
                 max_age=30*24*60*60,
                 httponly=True,
-                secure=request.is_secure,  # إصلاح ثغرة الكوكيز الآمنة
+                secure=request.is_secure,
                 samesite='Strict'
             )
             return response
@@ -365,7 +368,6 @@ def api_login():
 @app.route("/api/logout", methods=["POST"])
 def api_logout():
     username = session.get('username')
-    
     if username:
         delete_all_user_tokens(username)
     
@@ -373,7 +375,6 @@ def api_logout():
     
     response = make_response(jsonify({"success": True, "message": "تم تسجيل الخروج"}))
     response.set_cookie('remember_token', '', expires=0)
-    
     return response
 
 @app.route("/api/current_user")
@@ -411,10 +412,8 @@ def user_settings():
     users = safe_load_json(USERS_FILE, {})
     if session['username'] in users:
         users[session['username']]["theme"] = theme
-        
         with open(USERS_FILE, "w", encoding="utf-8") as f:
             json.dump(users, f, indent=2)
-        
         return jsonify({"success": True, "message": "تم تحديث الإعدادات"})
     
     return jsonify({"success": False, "message": "المستخدم غير موجود"})
@@ -509,15 +508,19 @@ def server_action(folder, act):
         except Exception: 
             pass
         if act == "stop": 
-            del running_procs[proc_key]
+            running_procs.pop(proc_key, None)
     
     if act == "stop": 
         return jsonify({"success": True})
 
     user_servers_dir = ensure_user_servers_dir()
     log_path = os.path.join(user_servers_dir, folder, "server.log")
-    with open(log_path, "w", encoding="utf-8") as f:
-        f.write("")
+    
+    try:
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write("")
+    except Exception:
+        pass
     
     meta_path = ensure_meta(folder)
     if not meta_path:
@@ -585,7 +588,6 @@ def get_file_content(folder, filename):
     user_servers_dir = os.path.realpath(ensure_user_servers_dir())
     file_path = os.path.realpath(os.path.join(user_servers_dir, folder, filename))
     
-    # إصلاح ثغرة Path Traversal للتحقق بدقة من المسار
     if not file_path.startswith(user_servers_dir):
         return jsonify({"content": ""}), 403
     
@@ -766,7 +768,7 @@ def install_req(folder):
             cwd=server_dir, 
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            universal_newlines=True
+            text=True
         )
         
         with open(log_path, "a", encoding="utf-8") as log_file:
@@ -847,6 +849,7 @@ def delete_user():
     data = request.get_json(silent=True) or {}
     username_to_delete = data.get("username", "").strip()
     
+    # التحقق النظيف من اسم المستخدم لمنع حذف المشرف الرئيسي
     if not username_to_delete or username_to_delete == ADMIN_USERNAME:
         return jsonify({"success": False, "message": "لا يمكن حذف هذا المستخدم"})
     
@@ -856,14 +859,13 @@ def delete_user():
     if username_to_delete not in users:
         return jsonify({"success": False, "message": "المستخدم غير موجود"})
     
-    del users[username_to_delete]
+    users.pop(username_to_delete, None)
     
     with open(USERS_FILE, "w", encoding="utf-8") as f:
         json.dump(users, f, indent=2)
     
     user_dir = os.path.join(USERS_DIR, username_to_delete)
     if os.path.exists(user_dir):
-        import shutil
         try:
             shutil.rmtree(user_dir)
         except Exception:
@@ -873,4 +875,6 @@ def delete_user():
 
 if __name__ == "__main__":
     port = int(os.environ.get("SERVER_PORT", 21910))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    # تم جعل وضع التصحيح آمنًا بحيث يعتمد على متغيرات البيئة بدلاً من تفعيله مباشرة افتراضياً
+    debug_mode = os.environ.get("FLASK_DEBUG", "False").lower() == "true"
+    app.run(host="0.0.0.0", port=port, debug=debug_mode)
