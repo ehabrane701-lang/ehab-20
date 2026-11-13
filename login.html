@@ -55,31 +55,12 @@
       box-shadow: 0 0 20px var(--primary);
     }
     
-    .gold-line {
-      position: absolute;
-      background: linear-gradient(90deg, transparent, #FFD700, transparent);
-      height: 3px;
-      filter: blur(0px);
-      opacity: 0.8;
-      animation: goldLineMove 10s linear infinite;
-      box-shadow: 0 0 30px #FFD700;
-    }
-    
     @keyframes fastLineMove {
       0% {
         transform: translateX(-100vw) rotate(0deg);
       }
       100% {
         transform: translateX(100vw) rotate(360deg);
-      }
-    }
-    
-    @keyframes goldLineMove {
-      0% {
-        transform: translateX(-120vw) rotate(30deg);
-      }
-      100% {
-        transform: translateX(120vw) rotate(390deg);
       }
     }
     
@@ -295,9 +276,14 @@
       text-transform: uppercase;
     }
     
-    .btn-login:hover {
+    .btn-login:hover:not(:disabled) {
       transform: translateY(-3px);
       box-shadow: 0 15px 40px rgba(0, 136, 255, 0.6);
+    }
+    
+    .btn-login:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
     }
     
     .btn-login::before {
@@ -336,26 +322,6 @@
       background: rgba(244, 67, 54, 0.15);
       border: 2px solid rgba(244, 67, 54, 0.4);
       color: #f44336;
-    }
-    
-    .admin-info {
-      background: rgba(255, 215, 0, 0.1);
-      border: 2px solid rgba(255, 215, 0, 0.3);
-      border-radius: 12px;
-      padding: 15px;
-      margin-bottom: 20px;
-      text-align: center;
-      display: none;
-    }
-    
-    .admin-info h4 {
-      color: #FFD700;
-      margin-bottom: 10px;
-    }
-    
-    .admin-info p {
-      color: var(--text-muted);
-      font-size: 0.9rem;
     }
     
     .loading {
@@ -399,48 +365,36 @@
   <div class="login-container">
     <div class="card">
       <div class="logo-section">
-        <div class="logo"> VPS DARK</div>
+        <div class="logo">VPS DARK</div>
         <div class="tagline">لوحة تحكم احترافية للاستضافة</div>
       </div>
       
-      <div id="loginForm">
+      <form id="loginForm" onsubmit="handleLogin(event)">
         <h2 class="form-title">تسجيل الدخول</h2>
-        
-        <div class="admin-info" id="adminInfo">
-          <h4>👑 حساب المسؤول</h4>
-          <p>إذا كنت المسؤول، استخدم هذه البيانات للدخول:</p>
-          <p style="background:rgba(0,0,0,0.3);padding:8px;border-radius:6px;margin-top:5px;">
-            <strong>اسم المستخدم:</strong> *****<br>
-            <strong>كلمة المرور:</strong> *****
-          </p>
-          <p style="font-size:0.8rem;margin-top:5px;color:#FFD700">
-            ⭐ الدخول بهذا الحساب يفتح لوحة إنشاء الحسابات
-          </p>
-        </div>
         
         <div class="form-group">
           <label for="username">👤 اسم المستخدم</label>
-          <input type="text" id="username" placeholder="أدخل اسم المستخدم" autocomplete="username">
+          <input type="text" id="username" placeholder="أدخل اسم المستخدم" autocomplete="username" required>
         </div>
         
         <div class="form-group">
           <label for="password">🔒 كلمة المرور</label>
-          <input type="password" id="password" placeholder="أدخل كلمة المرور" autocomplete="current-password">
+          <input type="password" id="password" placeholder="أدخل كلمة المرور" autocomplete="current-password" required>
         </div>
         
-        <div class="checkbox-group">
+        <div class="checkbox-group" onclick="document.getElementById('rememberMe').click();">
           <input type="checkbox" id="rememberMe">
           <span class="checkbox-custom"></span>
           <label for="rememberMe" class="checkbox-label">تذكر تسجيل الدخول</label>
         </div>
         
-        <button class="btn-login" onclick="login()" id="loginBtn">
+        <button type="submit" class="btn-login" id="loginBtn">
           <span id="loginText">🚀 دخول إلى النظام</span>
           <div class="loading" id="loginLoading"></div>
         </button>
         
         <div id="message" class="message"></div>
-      </div>
+      </form>
     </div>
   </div>
 
@@ -450,7 +404,6 @@
       const container = document.getElementById('backgroundAnimation');
       container.innerHTML = '';
       
-      // خطوط عادية
       for (let i = 0; i < 10; i++) {
         const line = document.createElement('div');
         line.className = 'fast-line';
@@ -477,24 +430,32 @@
     }
     
     // تسجيل الدخول
-    async function login() {
-      const username = document.getElementById('username').value.trim();
-      const password = document.getElementById('password').value.trim();
-      const rememberMe = document.getElementById('rememberMe').checked;
+    async function handleLogin(event) {
+      event.preventDefault();
+      
+      const usernameInput = document.getElementById('username');
+      const passwordInput = document.getElementById('password');
+      const rememberMeInput = document.getElementById('rememberMe');
+      
+      const username = usernameInput.value.trim();
+      const password = passwordInput.value.trim();
+      const rememberMe = rememberMeInput.checked;
       
       if (!username || !password) {
         showMessage('يرجى ملء جميع الحقول', 'error');
         return;
       }
       
-      // عرض حالة التحميل
       const btn = document.getElementById('loginBtn');
       const text = document.getElementById('loginText');
       const loading = document.getElementById('loginLoading');
       
+      // تعطيل الحقول والزر أثناء عملية التحميل لمنع التكرار
       text.style.display = 'none';
       loading.style.display = 'block';
       btn.disabled = true;
+      usernameInput.disabled = true;
+      passwordInput.disabled = true;
       
       try {
         const response = await fetch('/api/login', {
@@ -517,10 +478,10 @@
           }
           
           setTimeout(() => {
-            window.location.href = '/';
+            window.location.href = data.redirect_url || '/dashboard';
           }, 1000);
         } else {
-          showMessage('❌ ' + data.message, 'error');
+          showMessage('❌ ' + (data.message || 'بيانات الدخول غير صحيحة'), 'error');
           resetLoginButton();
         }
       } catch (error) {
@@ -533,39 +494,26 @@
       const text = document.getElementById('loginText');
       const loading = document.getElementById('loginLoading');
       const btn = document.getElementById('loginBtn');
+      const usernameInput = document.getElementById('username');
+      const passwordInput = document.getElementById('password');
       
       text.style.display = 'inline';
       loading.style.display = 'none';
       btn.disabled = false;
+      usernameInput.disabled = false;
+      passwordInput.disabled = false;
     }
     
-    // إظهار معلومات المسؤول عند الكتابة
-    document.getElementById('username').addEventListener('input', function(e) {
-      const adminInfo = document.getElementById('adminInfo');
-      if (e.target.value.toLowerCase().includes('tegrjfbdb')) {
-        adminInfo.style.display = 'block';
-      } else {
-        adminInfo.style.display = 'none';
-      }
-    });
-    
-    // دعم زر Enter
-    document.addEventListener('keypress', function(e) {
-      if (e.key === 'Enter') {
-        login();
-      }
-    });
-    
-    // التحقق من حالة المستخدم الحالي
+    // التحقق من حالة المستخدم الحالي (فقط إذا لم تكن هذه صفحة تسجيل الدخول المباشرة)
     async function checkAuth() {
       try {
         const response = await fetch('/api/current_user');
         const data = await response.json();
-        if (data.success) {
-          window.location.href = '/';
+        if (data.success && window.location.pathname !== '/login') {
+          window.location.href = data.dashboard_url || '/dashboard';
         }
       } catch (error) {
-        // لا مشكلة إذا فشل الاتصال
+        // تجاهل الخطأ في حال لم يكن هناك جلسة مسجلة
       }
     }
     
